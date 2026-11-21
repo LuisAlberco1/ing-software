@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Inicio{% endblock %}
+
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/inventario/dashboard.css' %}">{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+    <div>
+        <h1>Panel principal</h1>
+        <p>Resumen general del inventario de RG Beauty.</p>
+    </div>
+</div>
+
+{% if dashboard_error %}<div class="message error">{{ dashboard_error }}</div>{% endif %}
+
+<section class="stats-grid">
+    <article class="stat-card highlight">
+        <div class="stat-label">Productos activos</div>
+        <div class="stat-value">{% if productos_activos != None %}{{ productos_activos }}{% else %}—{% endif %}</div>
+        <div class="stat-description">Productos del catálogo en inventarios activos</div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-label">Unidades en stock</div>
+        <div class="stat-value">{% if unidades_stock != None %}{{ unidades_stock }}{% else %}—{% endif %}</div>
+        <div class="stat-description">Existencias registradas en inventarios activos</div>
+    </article>
+    <article class="stat-card alert">
+        <div class="stat-label">Stock bajo</div>
+        <div class="stat-value">{% if productos_stock_bajo != None %}{{ productos_stock_bajo }}{% else %}—{% endif %}</div>
+        <div class="stat-description">Entre 1 y {{ low_stock_threshold }} unidades</div>
+    </article>
+    <article class="stat-card alert">
+        <div class="stat-label">Productos agotados</div>
+        <div class="stat-value">{% if productos_agotados != None %}{{ productos_agotados }}{% else %}—{% endif %}</div>
+        <div class="stat-description">Productos con stock en cero</div>
+    </article>
+</section>
+
+<section class="dashboard-chart panel">
+    <div class="chart-heading">
+        <div>
+            <h2>Movimiento de inventario</h2>
+            <p class="panel-subtitle">Filtra las entradas y salidas y revisa qué productos registran más o menos movimientos.</p>
+        </div>
+        <div class="chart-legend"><span><i class="legend-entry"></i> Entradas</span><span><i class="legend-exit"></i> Salidas (ventas)</span></div>
+    </div>
+
+    <form method="get" class="dashboard-filters" data-live-filter>
+        <div class="dashboard-filter-field">
+            <label for="filtro-anio">Año</label>
+            <select id="filtro-anio" name="anio">
+                {% for anio in anios_disponibles %}
+                <option value="{{ anio }}" {% if anio == anio_seleccionado %}selected{% endif %}>{{ anio }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="dashboard-filter-field">
+            <label for="filtro-mes">Mes</label>
+            <select id="filtro-mes" name="mes">
+                <option value="0" {% if not mes_seleccionado %}selected{% endif %}>Todos los meses</option>
+                <option value="1" {% if mes_seleccionado == 1 %}selected{% endif %}>Enero</option>
+                <option value="2" {% if mes_seleccionado == 2 %}selected{% endif %}>Febrero</option>
+                <option value="3" {% if mes_seleccionado == 3 %}selected{% endif %}>Marzo</option>
+                <option value="4" {% if mes_seleccionado == 4 %}selected{% endif %}>Abril</option>
+                <option value="5" {% if mes_seleccionado == 5 %}selected{% endif %}>Mayo</option>
+                <option value="6" {% if mes_seleccionado == 6 %}selected{% endif %}>Junio</option>
+                <option value="7" {% if mes_seleccionado == 7 %}selected{% endif %}>Julio</option>
+                <option value="8" {% if mes_seleccionado == 8 %}selected{% endif %}>Agosto</option>
+                <option value="9" {% if mes_seleccionado == 9 %}selected{% endif %}>Septiembre</option>
+                <option value="10" {% if mes_seleccionado == 10 %}selected{% endif %}>Octubre</option>
+                <option value="11" {% if mes_seleccionado == 11 %}selected{% endif %}>Noviembre</option>
+                <option value="12" {% if mes_seleccionado == 12 %}selected{% endif %}>Diciembre</option>
+            </select>
+        </div>
+        <div class="dashboard-filter-field">
+            <label for="filtro-tipo">Tipo de movimiento</label>
+            <select id="filtro-tipo" name="tipo">
+                <option value="todos" {% if tipo_seleccionado == "todos" %}selected{% endif %}>Entradas y salidas</option>
+                <option value="entrada" {% if tipo_seleccionado == "entrada" %}selected{% endif %}>Solo entradas</option>
+                <option value="salida" {% if tipo_seleccionado == "salida" %}selected{% endif %}>Solo salidas (ventas)</option>
+            </select>
+        </div>
+        <div class="dashboard-filter-field">
+            <label for="filtro-producto">Producto</label>
+            <select id="filtro-producto" name="producto">
+                <option value="0">Todos los productos</option>
+                {% for producto in productos_filtro %}
+                <option value="{{ producto.id_producto }}" {% if producto.id_producto == producto_seleccionado %}selected{% endif %}>{{ producto.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="dashboard-filter-actions">
+            <button class="button button-primary" type="submit">Aplicar filtros</button>
+            <a class="button button-secondary" href="{% url 'inventario:dashboard' %}">Limpiar</a>
+            <span data-live-status aria-live="polite"></span>
+        </div>
+    </form>
+
+    <div class="chart-area" role="img" aria-label="Gráfico de entradas y salidas de inventario" data-live-results="dashboard-chart">
+        {% for item in grafico_movimientos %}
+        <div class="chart-month">
+            <div class="chart-bars">
+                <div class="chart-bar bar-entry" style="height:{% widthratio item.entradas grafico_maximo 100 %}%" title="{{ item.entradas }} unidades de entrada"><span>{{ item.entradas }}</span></div>
+                <div class="chart-bar bar-exit" style="height:{% widthratio item.salidas grafico_maximo 100 %}%" title="{{ item.salidas }} unidades de salida"><span>{{ item.salidas }}</span></div>
+            </div>
+            <small>{{ item.mes }}</small>
+        </div>
+        {% empty %}<p class="empty-state">No hay movimientos para los filtros seleccionados.</p>{% endfor %}
+    </div>
+    <p class="chart-note">Los rankings siguientes consideran el período seleccionado. Las salidas se contabilizan como ventas, según el funcionamiento definido para RG Beauty.</p>
+</section>
+
+<div class="ranking-heading">
+    <h2 class="section-title">Productos con más y menos movimientos</h2>
+    <div class="dashboard-filter-field ranking-selector">
+        <label for="dashboard-ranking-filter">Mostrar ranking</label>
+        <select id="dashboard-ranking-filter" data-ranking-filter aria-controls="dashboard-rankings">
+            <option value="mayor-entrada">Mayor entrada</option>
+            <option value="menor-entrada">Menor entrada</option>
+            <option value="mayor-salida">Más vendidos (mayor salida)</option>
+            <option value="menor-salida">Menos vendidos (menor salida)</option>
+        </select>
+    </div>
+</div>
+<section class="dashboard-rankings" id="dashboard-rankings" data-ranking-container data-live-results="dashboard-rankings" aria-live="polite">
+    <article class="panel ranking-panel" data-dashboard-ranking="mayor-entrada">
+        <h3>Mayor entrada</h3>
+        <p class="panel-subtitle">Productos que recibieron más unidades.</p>
+        <ol class="ranking-list">
+            {% for item in productos_mayor_entrada %}<li><span>{{ item.nombre }}</span><strong>{{ item.cantidad }} un.</strong></li>{% empty %}<li class="empty-state">Sin datos para el período.</li>{% endfor %}
+        </ol>
+    </article>
+    <article class="panel ranking-panel" data-dashboard-ranking="menor-entrada" hidden>
+        <h3>Menor entrada</h3>
+        <p class="panel-subtitle">Productos que recibieron menos unidades.</p>
+        <ol class="ranking-list">
+            {% for item in productos_menor_entrada %}<li><span>{{ item.nombre }}</span><strong>{{ item.cantidad }} un.</strong></li>{% empty %}<li class="empty-state">Sin datos para el período.</li>{% endfor %}
+        </ol>
+    </article>
+    <article class="panel ranking-panel" data-dashboard-ranking="mayor-salida" hidden>
+        <h3>Mayor salida / más vendidos</h3>
+        <p class="panel-subtitle">Productos con más unidades de salida.</p>
+        <ol class="ranking-list">
+            {% for item in productos_mayor_salida %}<li><span>{{ item.nombre }}</span><strong>{{ item.cantidad }} un.</strong></li>{% empty %}<li class="empty-state">Sin datos para el período.</li>{% endfor %}
+        </ol>
+    </article>
+    <article class="panel ranking-panel" data-dashboard-ranking="menor-salida" hidden>
+        <h3>Menor salida / menos vendidos</h3>
+        <p class="panel-subtitle">Productos con menos unidades de salida.</p>
+        <ol class="ranking-list">
+            {% for item in productos_menor_salida %}<li><span>{{ item.nombre }}</span><strong>{{ item.cantidad }} un.</strong></li>{% empty %}<li class="empty-state">Sin datos para el período.</li>{% endfor %}
+        </ol>
+    </article>
+</section>
+
+<h2 class="section-title">Seguimiento del inventario</h2>
+<section class="content-grid">
+    {% if perms.inventario.view_stock %}
+    <div class="panel">
+        <h3>Alertas de inventario</h3>
+        <p class="panel-subtitle">Productos con {{ low_stock_threshold }} unidades o menos en inventarios activos.</p>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead><tr><th>Producto</th><th>Inventario</th><th>Stock</th><th>Estado</th></tr></thead>
+                <tbody>
+                    {% for alerta in alertas_stock %}
+                    <tr>
+                        <td>{{ alerta.producto.nombre }} <small>({{ alerta.producto.sku }})</small></td>
+                        <td>{{ alerta.inventario.nombre }}</td>
+                        <td>{{ alerta.cantidad_actual }}</td>
+                        <td>{% if alerta.cantidad_actual == 0 %}Agotado{% else %}Stock bajo{% endif %}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4"><div class="empty-state">No hay productos con stock bajo o agotado.</div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a class="button button-secondary" href="{% url 'inventario:stock_lista' %}">Ver existencias</a>
+    </div>
+    {% endif %}
+
+    {% if perms.inventario.view_movimientoinventario %}
+    <div class="panel">
+        <h3>Movimientos recientes</h3>
+        <p class="panel-subtitle">Últimas operaciones registradas.</p>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Cambio</th></tr></thead>
+                <tbody>
+                    {% for detalle in movimientos_recientes %}
+                    <tr>
+                        <td>{{ detalle.movimiento.fecha|date:"d/m/Y H:i" }}</td>
+                        <td>{{ detalle.producto.nombre }}</td>
+                        <td>{{ detalle.movimiento.tipo_movimiento.nombre }}</td>
+                        <td>
+                            {% if detalle.movimiento.tipo_movimiento.nombre == "Entrada" %}+{{ detalle.cantidad }}
+                            {% elif detalle.movimiento.tipo_movimiento.nombre == "Salida" %}-{{ detalle.cantidad }}
+                            {% else %}{{ detalle.stock_anterior }} → {{ detalle.stock_nuevo }}{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4"><div class="empty-state">Aún no hay movimientos registrados.</div></td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a class="button button-secondary" href="{% url 'inventario:movimientos_historial' %}">Ver historial</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/inventario/dashboard_rankings.js' %}" defer></script>
+{% endblock %}

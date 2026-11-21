@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% load static %}
+ 
+{% block title %}Productos{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/inventario/productos.css' %}?v=5">
+{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <h1>Catálogo de productos</h1>
+        <p>Consulta los productos y abre su detalle para revisar las existencias por inventario.</p>
+    </div>
+    <div class="page-actions">
+        {% if perms.inventario.add_producto or user.is_superuser %}
+        <a href="{% url 'inventario:producto_form' %}" class="button button-primary">+ Nuevo producto</a>
+        {% endif %}
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Productos disponibles</h2>
+    <p class="panel-subtitle">Selecciona “Ver detalle” para consultar el stock por bodega y registrar movimientos.</p>
+    <form method="get" class="product-filters" data-live-filter>
+        <div class="form-group">
+            <label for="buscar">Buscar producto</label>
+            <input type="search" id="buscar" name="buscar" value="{{ buscar }}" placeholder="Nombre, SKU, marca o categoría">
+        </div>
+        <div class="form-group">
+            <label for="categoria">Categoría</label>
+            <select id="categoria" name="categoria">
+                <option value="">Todas las categorías</option>
+                {% for categoria in categorias %}
+                <option value="{{ categoria.pk }}" {% if categoria_seleccionada == categoria.pk|stringformat:"s" %}selected{% endif %}>{{ categoria.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="marca">Marca</label>
+            <select id="marca" name="marca">
+                <option value="">Todas las marcas</option>
+                {% for marca in marcas %}
+                <option value="{{ marca.pk }}" {% if marca_seleccionada == marca.pk|stringformat:"s" %}selected{% endif %}>{{ marca.nombre }}{% if not marca.activo %} (inactiva){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="estado">Estado</label>
+            <select id="estado" name="estado">
+                <option value="" {% if not estado_seleccionado %}selected{% endif %}>Todos los estados</option>
+                <option value="activo" {% if estado_seleccionado == "activo" %}selected{% endif %}>Activo</option>
+                <option value="inactivo" {% if estado_seleccionado == "inactivo" %}selected{% endif %}>Inactivo</option>
+                <option value="archivado" {% if estado_seleccionado == "archivado" %}selected{% endif %}>Retirado definitivamente</option>
+            </select>
+        </div>
+        <div class="filter-actions">
+            <button type="submit" class="button button-primary">Buscar</button>
+            <a href="{% url 'inventario:productos_lista' %}" class="button button-secondary">Limpiar</a>
+            <span data-live-status aria-live="polite"></span>
+        </div>
+    </form>
+</section>
+
+<section class="panel products-table-panel" data-live-results="products">
+    <div class="table-wrapper">
+        <table class="data-table">
+            <thead><tr><th>Producto</th><th>SKU</th><th>Categoría</th><th>Marca</th><th>Precio</th><th>Creado por</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody>
+            {% for producto in page_obj %}
+                <tr>
+                    <td><a href="{% url 'inventario:producto_detalle' producto.pk %}">{{ producto.nombre }}</a></td>
+                    <td>{{ producto.sku }}</td>
+                    <td>{{ producto.categoria.nombre }}</td>
+                    <td>{{ producto.marca.nombre }}</td>
+                    <td>
+                        {% for precio in producto.precios.all %}
+                            {% if precio.activo and not precio.fecha_fin %}${{ precio.precio|floatformat:2 }}{% endif %}
+                        {% empty %}Sin precio{% endfor %}
+                    </td>
+                    <td>{% if producto.creado_por %}{{ producto.creado_por.get_username }}{% else %}Sin asignar{% endif %}</td>
+                    <td><span class="status-badge {% if producto.activo %}status-active{% else %}status-inactive{% endif %}">{% if producto.archivado %}Retirado{% elif producto.activo %}Activo{% else %}Inactivo{% endif %}</span></td>
+                    <td class="actions-cell">
+                        <div class="row-actions">
+                            <a href="{% url 'inventario:producto_detalle' producto.pk %}">Ver detalle</a>
+                            {% if not producto.archivado %}
+                                {% if user.is_superuser or perms.inventario.change_producto %}
+                                    <a href="{% url 'inventario:producto_editar' producto.pk %}">Editar</a>
+                                    <form method="post" action="{% url 'inventario:producto_cambiar_estado' producto.pk %}" onsubmit="return confirm('{% if producto.activo %}¿Desactivar este producto? Se conservarán el stock y el historial.{% else %}¿Activar nuevamente este producto?{% endif %}');">
+                                        {% csrf_token %}<button type="submit" class="{% if producto.activo %}button-danger-link{% else %}button-action-link{% endif %}">{% if producto.activo %}Desactivar{% else %}Activar{% endif %}</button>
+                                    </form>
+                                    {% if not producto.activo %}
+                                        {% if perms.inventario.delete_producto or user.is_superuser %}
+                                    <form method="post" action="{% url 'inventario:producto_eliminar' producto.pk %}" onsubmit="return confirm('¿Retirar definitivamente {{ producto.nombre|escapejs }} del catálogo? Ya no se podrá activar ni usar en nuevos movimientos. Se conservarán el stock y todos los registros históricos.');">
+                                        {% csrf_token %}<button type="submit" class="button-danger-link">Eliminar del catálogo</button>
+                                    </form>
+                                        {% endif %}
+                                    {% endif %}
+                                {% else %}
+                                    <span class="muted-action">Solo una cuenta autorizada puede editar</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="muted-action">Retirado del catálogo; historial conservado</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8"><div class="empty-state"><strong>No hay productos para mostrar</strong><p>No se encontraron productos con los filtros seleccionados.</p></div></td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+    <nav class="table-pagination" aria-label="Paginación del catálogo">
+        {% if page_obj.has_previous %}
+        <a class="button button-secondary" data-live-page href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Anterior</a>
+        {% endif %}
+        <span>Página {{ page_obj.number }} de {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+        <a class="button button-secondary" data-live-page href="?{% if filter_query %}{{ filter_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Siguiente</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+</section>
+{% endblock %}
